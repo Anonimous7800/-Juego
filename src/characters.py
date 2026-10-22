@@ -1,0 +1,67 @@
+
+CHARACTERS = {
+    'S': {
+        'id': 'S',
+        'name': 'Helio, el Heraldo Solar',
+        'faction': 'Solcardena',
+        'team': 1,
+        'title': 'Comandante Supremo de la Luz',
+        'icon': '☀️',
+        'trait_name': 'Firmeza Solar',
+        'trait_desc': 'Inicia con +1 Vida de Comandante (4 vidas) y sus peones tienen +1 HP.',
+        'lore': 'Custodio de los Salones del Alba. Su fe inquebrantable inspira a sus tropas a resistir las ofensivas más feroces.',
+        'color': (255, 215, 0),
+        'accent': (255, 140, 0),
+        'bg': (43, 33, 19),
+        'extra_lives': 1,
+        'extra_pawn_hp': 1
+    },
+    'A': {
+        'id': 'A',
+        'name': 'Archicanciller Lunaris',
+        'faction': "Royaume D'Aurelium",
+        'team': 2,
+        'title': 'Oráculo de la Corona Lunar',
+        'icon': '🌙',
+        'trait_name': 'Velo de Crepúsculo',
+        'trait_desc': 'El escudo de Aura Solar dura más tiempo y sus Médicos curan +1 HP adicional a aliados.',
+        'lore': 'Maestro de las mareas etéreas. Canaliza el influjo de las lunas gemelas para curar las heridas de la vanguardia.',
+        'color': (177, 156, 217),
+        'accent': (224, 176, 255),
+        'bg': (26, 26, 36),
+        'extra_lives': 0,
+        'medic_bonus': 1
+    },
+    'J': {
+        'id': 'J',
+        'name': 'Ignis, Señor de las Cenizas',
+        'faction': 'Imperio de Varkhental',
+        'team': 1,
+        'title': 'Caudillo de las Forjas Volcánicas',
+        'icon': '🔥',
+        'trait_name': 'Furia Ardiente',
+        'trait_desc': 'Al destruir una unidad enemiga, recupera 1 Punto de Acción (PA) de inmediato.',
+        'lore': 'Nacido en las fauces de la Caldera Sagrada. Cree que el mundo renacerá purificado tras la última conflagración.',
+        'color': (255, 80, 80),
+        'accent': (255, 69, 0),
+        'bg': (45, 18, 18),
+        'extra_lives': 0,
+        'kill_ap_bonus': 1
+    },
+    'K': {
+        'id': 'K',
+        'name': 'Espectro de la Sombra Jaki',
+        'faction': 'Imperio Sthalgard',
+        'team': 2,
+        'title': 'Soberano del Vórtice Oscuro',
+        'icon': '🗡️',
+        'trait_name': 'Paso Sombrío',
+        'trait_desc': 'Inmune al daño de trampas ☠ y sus tropas ganan +1 de alcance tras usar un portal.',
+        'lore': 'Camina entre los intersticios del eclipse. Nadie ha visto su verdadero rostro y ha sobrevivido para relatarlo.',
+        'color': (78, 205, 145),
+        'accent': (0, 255, 150),
+        'bg': (15, 43, 32),
+        'extra_lives': 0,
+        'trap_immune': True
+    }
+}

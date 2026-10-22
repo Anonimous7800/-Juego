@@ -1,0 +1,25 @@
+# Python Bytecode & Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.spec
+
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv/
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE & Editor Configs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Crash and Logs
+*.log
