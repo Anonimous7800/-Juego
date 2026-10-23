@@ -12,8 +12,13 @@ class BoardGame:
     def __init__(self, human_faction='S'):
         self.audio = AudioManager()
         self.missions = MissionManager()
-        self.human = human_faction
-        self.character = CHARACTERS.get(human_faction, CHARACTERS['S'])
+        if isinstance(human_faction, (list, tuple, set)):
+            self.human_factions = set(human_faction)
+            self.human = next(iter(self.human_factions)) if self.human_factions else 'S'
+        else:
+            self.human_factions = {human_faction}
+            self.human = human_faction
+        self.character = CHARACTERS.get(self.human, CHARACTERS['S'])
 
         self.board = [['' for _ in range(N)] for _ in range(N)]
         self.special = [['' for _ in range(N)] for _ in range(N)]
@@ -23,11 +28,12 @@ class BoardGame:
         self.ranged = {}
         self.acted = set()
 
+        is_single_human = len(self.human_factions) == 1
         self.lives = {
-            'S': INIT_LIVES + (1 if human_faction == 'S' else 0),
-            'A': INIT_LIVES + (1 if human_faction == 'A' else 0),
-            'J': INIT_LIVES + (1 if human_faction == 'J' else 0),
-            'K': INIT_LIVES + (1 if human_faction == 'K' else 0)
+            'S': INIT_LIVES + (1 if ('S' in self.human_factions and is_single_human) else 0),
+            'A': INIT_LIVES + (1 if ('A' in self.human_factions and is_single_human) else 0),
+            'J': INIT_LIVES + (1 if ('J' in self.human_factions and is_single_human) else 0),
+            'K': INIT_LIVES + (1 if ('K' in self.human_factions and is_single_human) else 0)
         }
         self.pawn_deaths = {'S': 0, 'A': 0, 'J': 0, 'K': 0}
         self.eliminated = set()
@@ -65,8 +71,11 @@ class BoardGame:
     def cur_code(self):
         return FACTIONS[self.cur_faction()]['code']
 
+    def get_character(self, code):
+        return CHARACTERS.get(code, CHARACTERS.get(self.human, CHARACTERS['S']))
+
     def is_human_turn(self):
-        return not self.game_over and self.cur_code() == self.human
+        return not self.game_over and self.cur_code() in self.human_factions
 
     def log(self, msg):
         self.log_messages.append(msg)
@@ -131,8 +140,8 @@ class BoardGame:
     def place_piece(self, p, r, c, t='P'):
         self.board[r][c] = f"{p}_{t}"
         base_hp = MAX_HP[t]
-        if p == self.human and t == 'P' and self.character.get('extra_pawn_hp', 0):
-            base_hp += self.character['extra_pawn_hp']
+        if p in self.human_factions and t == 'P' and self.get_character(p).get('extra_pawn_hp', 0):
+            base_hp += self.get_character(p)['extra_pawn_hp']
         self.hp[(r, c)] = base_hp
 
     def count_specials(self, t):
@@ -197,6 +206,11 @@ class BoardGame:
                         out.append((a, b))
                     break
 
+        def is_ally(a, b):
+            if not self.is_in_grid(a, b): return False
+            val = self.board[a][b]
+            return val != '' and val != 'BLOCKED' and TEAM[val[0]] == TEAM[p]
+
         carrier = self.is_carrier(r, c)
         if utype == 'P' and not carrier:
             dr, dc = FWD[p]
@@ -228,9 +242,71 @@ class BoardGame:
         else:
             slide(ALL_DIRS, 2 + boost)
 
+        if carrier or any(self.is_carrier(r + dr, c + dc) for dr, dc in ALL_DIRS if self.is_in_grid(r + dr, c + dc)):
+            for dr, dc in ALL_DIRS:
+                a, b = r + dr, c + dc
+                if is_ally(a, b):
+                    if (a, b) not in out:
+                        out.append((a, b))
+
         if carrier:
             out = [m for m in out if max(abs(r - m[0]), abs(c - m[1])) <= 2]
         return out
+
+    def swap_pieces(self, r1, c1, r2, c2):
+        piece1 = self.board[r1][c1]
+        piece2 = self.board[r2][c2]
+        if not piece1 or not piece2 or piece1 == 'BLOCKED' or piece2 == 'BLOCKED':
+            return
+        c1_carrier = self.is_carrier(r1, c1)
+        c2_carrier = self.is_carrier(r2, c2)
+
+        self.board[r1][c1] = piece2
+        self.board[r2][c2] = piece1
+
+        hp1 = self.hp.pop((r1, c1), MAX_HP[piece1[2]])
+        hp2 = self.hp.pop((r2, c2), MAX_HP[piece2[2]])
+        self.hp[(r1, c1)] = hp2
+        self.hp[(r2, c2)] = hp1
+
+        s1 = self.shields.pop((r1, c1), None)
+        s2 = self.shields.pop((r2, c2), None)
+        if s1: self.shields[(r2, c2)] = s1
+        if s2: self.shields[(r1, c1)] = s2
+
+        f1 = self.frozen.pop((r1, c1), None)
+        f2 = self.frozen.pop((r2, c2), None)
+        if f1: self.frozen[(r2, c2)] = f1
+        if f2: self.frozen[(r1, c1)] = f2
+
+        rg1 = self.ranged.pop((r1, c1), None)
+        rg2 = self.ranged.pop((r2, c2), None)
+        if rg1: self.ranged[(r2, c2)] = rg1
+        if rg2: self.ranged[(r1, c1)] = rg2
+
+        if c1_carrier:
+            self.flag['r'] = r2
+            self.flag['c'] = c2
+        elif c2_carrier:
+            self.flag['r'] = r1
+            self.flag['c'] = c1
+
+        self.move_animations.append({
+            'piece': piece1, 'fr': r1, 'fc': c1, 'tr': r2, 'tc': c2,
+            'time': 0.0, 'duration': 0.22, 'carrier': c1_carrier
+        })
+        self.move_animations.append({
+            'piece': piece2, 'fr': r2, 'fc': c2, 'tr': r1, 'tc': c1,
+            'time': 0.0, 'duration': 0.22, 'carrier': c2_carrier
+        })
+
+        self.add_floating(r2, c2, "¡DAR PASO! 🏃", (78, 205, 145))
+        self.log(f"🔄 ¡{UNIT_NAMES[piece2[2]]} da paso a {UNIT_NAMES[piece1[2]]}!")
+
+        if self.flag['carried']:
+            cr, cc = self.flag['r'], self.flag['c']
+            if self.on_goal(self.flag['by'], cr, cc):
+                self.trigger_win(TEAM[self.flag['by']], "¡Llevaron la bandera sagrada al bastión de su base 🏳️!")
 
     def move_piece(self, fr, fc, r, c, by_card=False):
         piece = self.board[fr][fc]
@@ -273,7 +349,7 @@ class BoardGame:
             self.vfx_events.append({'type': 'shake', 'trauma': 4.0})
             self.log(f"🚩 ¡{FACTIONS[ORDER[self.idx]]['name']} ha tomado la bandera sagrada!")
             self.add_floating(r, c, "¡BANDERA CAPTURADA!", (255, 215, 0))
-            if p == self.human:
+            if p in self.human_factions:
                 self.missions.add_progress("flag_bearer", 1)
 
         sp = self.special[r][c]
@@ -289,7 +365,7 @@ class BoardGame:
                 self.add_floating(r, c, "+1 ❤️ VIDA (+2 HP)", (255, 50, 100))
                 self.log(f"💖 ¡{FACTIONS[ORDER[self.idx]]['name']} recogió Esencia de Vida! (+1 Vida: {self.lives[p]}/{MAX_LIVES})")
                 self.special[r][c] = ''
-                if p == self.human:
+                if p in self.human_factions:
                     self.missions.add_progress("heart_collector", 1)
             elif sp == 'I':
                 self.ranged[(r, c)] = 1
@@ -299,9 +375,9 @@ class BoardGame:
                 self.log(f"⚡ ¡{FACTIONS[ORDER[self.idx]]['name']} recogió Impulso Táctico (+1 Alcance)!")
                 self.special[r][c] = ''
             elif sp == 'X':
-                if p == self.human and self.character.get('trap_immune', False):
+                if p in self.human_factions and self.get_character(p).get('trap_immune', False):
                     self.add_floating(r, c, "¡INMUNE A TRAMPA!", (78, 205, 145))
-                    self.log(f"🛡️ Paso Sombrío: ¡{self.character['name']} anuló la trampa mortal!")
+                    self.log(f"🛡️ Paso Sombrío: ¡{self.get_character(p)['name']} anuló la trampa mortal!")
                 else:
                     self.frozen[(r, c)] = {'p': p, 'active': False}
                     self.audio.play_sfx('trap')
@@ -357,12 +433,12 @@ class BoardGame:
             self.log(f"☠️ {UNIT_NAMES[def_piece[2]]} ha sido destruido en batalla.")
             self.handle_piece_loss(p_def, def_piece[2])
 
-            if p_att == self.human:
+            if p_att in self.human_factions:
                 self.missions.add_progress("first_blood", 1)
                 if def_piece[2] == 'K':
                     self.missions.add_progress("general_slayer", 1)
-                if self.character.get('kill_ap_bonus', 0):
-                    self.ap += self.character['kill_ap_bonus']
+                if self.get_character(p_att).get('kill_ap_bonus', 0):
+                    self.ap += self.get_character(p_att)['kill_ap_bonus']
                     self.add_floating(fr, fc, "+1 PA FURIA", (255, 107, 107))
 
             if random.random() < 0.50:
@@ -443,7 +519,7 @@ class BoardGame:
         self.add_floating(7, 7, f"💀 ¡{FACTIONS[faction_key]['name']} ELIMINADO!", (255, 50, 50))
         self.log(f"💀 ¡ELIMINADO! {FACTIONS[faction_key]['name']} ha sido destruido ({why}).")
 
-        if p == self.human:
+        if p in self.human_factions and len(self.human_factions) <= 1:
             self.trigger_game_over(f"Tu facción ha caído: {why}")
             return
 
@@ -458,14 +534,15 @@ class BoardGame:
         self.game_over = True
         self.winner_team = winning_team
         self.win_reason = reason
-        player_team = TEAM[self.human]
+        human_teams = set(TEAM[f] for f in self.human_factions)
+        is_multiplayer = len(self.human_factions) > 1
 
-        if winning_team == player_team:
+        if is_multiplayer or (winning_team in human_teams):
             self.audio.play_sfx('victory')
             self.vfx_events.append({'type': 'victory_burst', 'team': winning_team})
             self.vfx_events.append({'type': 'shake', 'trauma': 8.0})
             self.log(f"🏆 ¡VICTORIA! {TEAM_NAMES[winning_team]} {reason}")
-            if self.lives[self.human] >= 4:
+            if self.lives.get(self.human, 0) >= 4:
                 self.missions.add_progress("flawless_victory", 1)
         else:
             self.audio.play_sfx('gameover')
@@ -510,16 +587,17 @@ class BoardGame:
         for k in to_del_frozen:
             del self.frozen[k]
 
-        heal_amt = 1 + (1 if cur == self.human and self.character.get('medic_bonus', 0) else 0)
+        heal_amt = 1 + (1 if cur in self.human_factions and self.get_character(cur).get('medic_bonus', 0) else 0)
         for r in range(N):
             for c in range(N):
                 val = self.board[r][c]
                 if self.is_own(val, cur) and val[2] == 'B':
                     for dr, dc in ALL_DIRS:
                         a, b = r + dr, c + dc
-                        if self.is_in_grid(a, b) and self.is_own(self.board[a][b], cur):
-                            max_h = MAX_HP[self.board[a][b][2]]
-                            self.hp[(a, b)] = min(max_h, self.hp.get((a, b), 1) + heal_amt)
+                        if self.is_in_grid(a, b) and self.board[a][b] and self.board[a][b] != 'BLOCKED':
+                            if TEAM[self.board[a][b][0]] == TEAM[cur]:
+                                max_h = MAX_HP[self.board[a][b][2]]
+                                self.hp[(a, b)] = min(max_h, self.hp.get((a, b), 1) + heal_amt)
 
         if self.turn_count % 10 == 0:
             self.gen_specials()
@@ -645,7 +723,7 @@ class BoardGame:
         trauma = 4.5 if cid in ('IMPACTO', 'CENIZA', 'VIENTO') else 2.5
         self.vfx_events.append({'type': 'shake', 'trauma': trauma})
         self.log(f"✨ {FACTIONS[ORDER[self.idx]]['name']} invocó hechizo: {CARDS[cid]['name']}")
-        if p == self.human:
+        if p in self.human_factions:
             self.missions.add_progress("spellmaster", 1)
 
         self.active_card = None
@@ -685,36 +763,35 @@ class BoardGame:
                 self.move_animations.remove(anim)
 
     def get_oracle_state(self):
-        """Constructs a clean summary of current tactical state for the Gemini Oracle."""
         cur_f_key = ORDER[self.idx]
         cur_f_name = FACTIONS[cur_f_key]['name']
-        human_f_key = next(k for k in ORDER if FACTIONS[k]['code'] == self.human)
-        human_name = FACTIONS[human_f_key]['name']
+        active_code = self.cur_code() if self.cur_code() in self.human_factions else self.human
+        active_f_key = next(k for k in ORDER if FACTIONS[k]['code'] == active_code)
+        human_name = FACTIONS[active_f_key]['name']
 
         flag_info = "En el centro sagrado [7,8]"
         if self.flag['carried']:
             carrier_faction = FACTIONS[next(k for k in ORDER if FACTIONS[k]['code'] == self.flag['by'])]['name']
             flag_info = f"Portada por {carrier_faction}"
 
-        human_code = self.human
         enemy_count = 0
         for r in range(N):
             for c in range(N):
                 p = self.board[r][c]
-                if p and p[0] != human_code and TEAM[p[0]] != TEAM[human_code]:
+                if p and p[0] != active_code and TEAM[p[0]] != TEAM[active_code]:
                     if LO - 1 <= r <= HI + 1 and LO - 1 <= c <= HI + 1:
                         enemy_count += 1
 
-        available_cards = [CARDS[cid]['name'] for cid in FACTION_HANDS.get(human_code, []) if cid not in self.used_cards[human_code]]
+        available_cards = [CARDS[cid]['name'] for cid in FACTION_HANDS.get(active_code, []) if cid not in self.used_cards[active_code]]
 
         return {
             'turno_nombre': cur_f_name,
             'humano_nombre': human_name,
-            'vidas_restantes': self.lives.get(human_code, 3),
+            'vidas_restantes': self.lives.get(active_code, 3),
             'ap': self.ap,
             'bandera_info': flag_info,
             'bandera_llevada': self.flag['carried'],
-            'portador_es_aliado': self.flag['carried'] and TEAM[self.flag['by']] == TEAM[human_code],
+            'portador_es_aliado': self.flag['carried'] and TEAM[self.flag['by']] == TEAM[active_code],
             'enemigos_cercanos': enemy_count,
             'cartas_disponibles': ", ".join(available_cards) if available_cards else "Ninguna (Agotadas)"
         }

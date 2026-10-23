@@ -25,11 +25,28 @@ class MenuManager:
 
         self.time = 0.0
         self.selected_character_id = 'S'
+        self.mp_slots = {'S': 'human', 'A': 'human', 'J': 'ai', 'K': 'ai'}
+        self.mp_preset = '1v1_duel'
 
         self.dragging_music = False
         self.dragging_sfx = False
         self.missions_scroll_y = 0.0
         self.max_missions_scroll = 260.0
+
+        self.credits_scroll_y = 0.0
+        self.credits_speed = 46.0
+        self.credits_speed_mult = 1.0
+        self.credits_paused = False
+        self.credits_direction = 1
+        self.credits_entrance_time = 0.0
+        self.dragging_credits = False
+        self.credits_surface = None
+        self.credits_content_h = 1750
+        self.credits_max_scroll = 1200.0
+        self.credits_track_top = 0
+        self.credits_track_h = 1
+        self.credits_top_fade = None
+        self.credits_bot_fade = None
 
         self.particles = [
             {
@@ -45,8 +62,64 @@ class MenuManager:
             for i in range(45)
         ]
 
+    def reset_credits(self):
+        self.credits_scroll_y = 0.0
+        self.credits_paused = False
+        self.credits_entrance_time = 0.0
+        self.credits_direction = 1
+        self.dragging_credits = False
+
+    def toggle_credits_pause(self):
+        self.credits_paused = not self.credits_paused
+
+    def toggle_credits_speed(self):
+        if self.credits_speed_mult == 1.0:
+            self.credits_speed_mult = 1.75
+        elif self.credits_speed_mult == 1.75:
+            self.credits_speed_mult = 2.5
+        else:
+            self.credits_speed_mult = 1.0
+
+    def toggle_credits_direction(self):
+        self.credits_direction *= -1
+
+    def scroll_credits(self, delta):
+        if self.credits_max_scroll > 0:
+            self.credits_scroll_y = max(0.0, min(self.credits_max_scroll, self.credits_scroll_y - delta))
+
+    def update_credits_scroll_from_mouse(self, mouse_y):
+        if self.credits_track_h <= 0 or self.credits_max_scroll <= 0:
+            return
+        pct = max(0.0, min(1.0, (mouse_y - self.credits_track_top) / float(self.credits_track_h)))
+        self.credits_scroll_y = pct * self.credits_max_scroll
+
+    def update_credits(self, dt):
+        self.credits_entrance_time = min(1.0, self.credits_entrance_time + dt)
+        if not self.credits_paused and self.credits_max_scroll > 0:
+            self.credits_scroll_y += self.credits_speed * self.credits_speed_mult * self.credits_direction * dt
+            if self.credits_scroll_y > self.credits_max_scroll:
+                self.credits_scroll_y = self.credits_max_scroll
+            elif self.credits_scroll_y < 0.0:
+                self.credits_scroll_y = 0.0
+
     def scroll_missions(self, delta):
         self.missions_scroll_y = max(0.0, min(self.max_missions_scroll, self.missions_scroll_y - delta))
+
+    def set_mp_preset(self, preset_id):
+        self.mp_preset = preset_id
+        if preset_id == '1v1_team':
+            self.mp_slots = {'S': 'human', 'A': 'human', 'J': 'human', 'K': 'human'}
+        elif preset_id == 'coop_2v2':
+            self.mp_slots = {'S': 'human', 'A': 'ai', 'J': 'human', 'K': 'ai'}
+        elif preset_id == '1v1_duel':
+            self.mp_slots = {'S': 'human', 'A': 'human', 'J': 'ai', 'K': 'ai'}
+        elif preset_id == '4p':
+            self.mp_slots = {'S': 'human', 'A': 'human', 'J': 'human', 'K': 'human'}
+
+    def toggle_mp_slot(self, cid):
+        current = self.mp_slots.get(cid, 'human')
+        self.mp_slots[cid] = 'ai' if current == 'human' else 'human'
+        self.mp_preset = 'custom'
 
     def draw_vector_star(self, surface, x, y, size=16, color=(255, 215, 0)):
         cx = x + size // 2
@@ -66,9 +139,11 @@ class MenuManager:
         self.font_body = pygame.font.SysFont("segoeui,consolas,arial", 16)
         self.font_bold = pygame.font.SysFont("segoeui,consolas,arial", 16, bold=True)
         self.font_small = pygame.font.SysFont("segoeui,consolas,arial", 13)
+        self.font_badge = pygame.font.SysFont("segoeui,consolas,arial", 12, bold=True)
 
     def update(self, dt):
         self.time += dt
+        self.update_credits(dt)
         for p in self.particles:
             p['y'] -= p['speed'] * dt
             p['x'] += math.sin(self.time * p['sway_freq'] + p['phase']) * (p['sway_amp'] * dt)
@@ -189,24 +264,181 @@ class MenuManager:
 
         return hover
 
+    def draw_menu_duel_showcase(self, rect, mouse_pos):
+        hover = rect.collidepoint(mouse_pos)
+        surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        bg_col = (16, 12, 26, 215) if not hover else (24, 18, 36, 230)
+        border_col = (168, 85, 247) if hover else (180, 140, 80)
+        pygame.draw.rect(surf, bg_col, (0, 0, rect.width, rect.height), border_radius=12)
+        pygame.draw.rect(surf, border_col, (0, 0, rect.width, rect.height), 2 if hover else 1, border_radius=12)
+        pygame.draw.rect(surf, (255, 215, 60), (0, 0, rect.width, 4), border_top_left_radius=12, border_top_right_radius=12)
+        self.screen.blit(surf, (rect.x, rect.y))
+
+        t_lbl = self.font_bold.render("CHOQUE DE FACCIONES", True, COLOR_TEXT_GOLD)
+        tx = rect.centerx - t_lbl.get_width() // 2
+        self.screen.blit(t_lbl, (tx, rect.y + 14))
+        self.draw_vector_star(self.screen, tx - 20, rect.y + 14, size=14, color=COLOR_TEXT_GOLD)
+        self.draw_vector_star(self.screen, tx + t_lbl.get_width() + 6, rect.y + 14, size=14, color=COLOR_TEXT_GOLD)
+
+        sub_lbl = self.font_small.render("Duelo Sagrado de Generales", True, (200, 190, 215))
+        self.screen.blit(sub_lbl, (rect.centerx - sub_lbl.get_width() // 2, rect.y + 36))
+
+        arena_y = rect.y + 145
+        ped_rect = pygame.Rect(rect.centerx - 105, arena_y + 22, 210, 36)
+        ped_surf = pygame.Surface((ped_rect.width, ped_rect.height), pygame.SRCALPHA)
+        pygame.draw.ellipse(ped_surf, (28, 20, 42, 190), (0, 0, ped_rect.width, ped_rect.height))
+        pygame.draw.ellipse(ped_surf, (168, 85, 247, 150), (0, 0, ped_rect.width, ped_rect.height), 2)
+        self.screen.blit(ped_surf, (ped_rect.x, ped_rect.y))
+
+        bob1 = math.sin(self.time * 3.5) * 5.0
+        bob2 = math.cos(self.time * 3.5) * 5.0
+
+        p1_x = rect.centerx - 72
+        p1_y = arena_y - 25 + int(bob1)
+        p2_x = rect.centerx + 18
+        p2_y = arena_y - 25 + int(bob2)
+
+        p1_surf = PieceGraphics.get_piece_surface('S', 'K', size=56)
+        p2_surf = PieceGraphics.get_piece_surface('A', 'K', size=56)
+
+        g1_surf = pygame.Surface((64, 64), pygame.SRCALPHA)
+        pygame.draw.circle(g1_surf, (255, 215, 0, 70), (32, 32), 28)
+        self.screen.blit(g1_surf, (p1_x - 4, p1_y - 4))
+        self.screen.blit(p1_surf, (p1_x, p1_y))
+
+        g2_surf = pygame.Surface((64, 64), pygame.SRCALPHA)
+        pygame.draw.circle(g2_surf, (177, 156, 217, 70), (32, 32), 28)
+        self.screen.blit(g2_surf, (p2_x - 4, p2_y - 4))
+        self.screen.blit(p2_surf, (p2_x, p2_y))
+
+        p1_hp_w = 40
+        pygame.draw.rect(self.screen, (30, 20, 20), (p1_x + 8, p1_y - 12, p1_hp_w, 5), border_radius=2)
+        pygame.draw.rect(self.screen, (78, 205, 145), (p1_x + 8, p1_y - 12, int(p1_hp_w * 0.85), 5), border_radius=2)
+
+        p2_hp_w = 40
+        pygame.draw.rect(self.screen, (30, 20, 20), (p2_x + 8, p2_y - 12, p2_hp_w, 5), border_radius=2)
+        pygame.draw.rect(self.screen, (255, 78, 105), (p2_x + 8, p2_y - 12, int(p2_hp_w * 0.65), 5), border_radius=2)
+
+        clash_x = rect.centerx
+        clash_y = arena_y + 4
+        pulse_r = int(14 + 6 * math.sin(self.time * 6.0))
+        clash_surf = pygame.Surface((50, 50), pygame.SRCALPHA)
+        pygame.draw.circle(clash_surf, (255, 240, 150, 130), (25, 25), pulse_r)
+        self.screen.blit(clash_surf, (clash_x - 25, clash_y - 25))
+
+        vs_lbl = self.font_header.render("VS", True, (255, 235, 120))
+        self.screen.blit(vs_lbl, (clash_x - vs_lbl.get_width() // 2, clash_y - vs_lbl.get_height() // 2))
+
+        spark_angles = [0.0, 1.2, 2.4, 3.6, 4.8]
+        for sa in spark_angles:
+            dist = 16 + 10 * math.sin(self.time * 7.0 + sa)
+            sx = clash_x + int(math.cos(sa + self.time * 2.0) * dist)
+            sy = clash_y + int(math.sin(sa + self.time * 2.0) * dist)
+            pygame.draw.circle(self.screen, (255, 230, 90), (sx, sy), 2)
+
+        f1_lbl = self.font_small.render("Solcardena", True, (255, 215, 0))
+        f2_lbl = self.font_small.render("Aurelium", True, (177, 156, 217))
+        self.screen.blit(f1_lbl, (rect.centerx - 72, arena_y + 54))
+        self.screen.blit(f2_lbl, (rect.centerx + 22, arena_y + 54))
+
+        info_box = pygame.Rect(rect.x + 14, rect.bottom - 86, rect.width - 28, 70)
+        pygame.draw.rect(self.screen, (10, 8, 16, 220), info_box, border_radius=8)
+        pygame.draw.rect(self.screen, (60, 48, 75), info_box, 1, border_radius=8)
+
+        b1_txt = self.font_small.render("Tablero Táctico 16×16", True, (255, 215, 80))
+        b2_txt = self.font_small.render("Combate, Cartas & Trincheras", True, (220, 215, 235))
+        b3_txt = self.font_badge.render("¡Captura la bandera y vence!", True, (140, 210, 255))
+        self.screen.blit(b1_txt, (info_box.centerx - b1_txt.get_width() // 2, info_box.y + 8))
+        self.screen.blit(b2_txt, (info_box.centerx - b2_txt.get_width() // 2, info_box.y + 28))
+        self.screen.blit(b3_txt, (info_box.centerx - b3_txt.get_width() // 2, info_box.y + 48))
+
     def draw_main_menu(self, mouse_pos):
         self.draw_ambient_bg()
 
-        title_txt = self.font_title_big.render("CHRONICLES OF TWO SUNS T2", True, (255, 225, 120))
-        glow_txt = self.font_title_big.render("CHRONICLES OF TWO SUNS T2", True, (168, 85, 247))
-        shadow_txt = self.font_title_big.render("CHRONICLES OF TWO SUNS T2", True, (0, 0, 0))
+        l1_txt = self.font_title_big.render("CHRONICLES OF", True, (255, 225, 120))
+        l1_glow = self.font_title_big.render("CHRONICLES OF", True, (168, 85, 247))
+        l1_shadow = self.font_title_big.render("CHRONICLES OF", True, (0, 0, 0))
 
-        tx = WINDOW_WIDTH // 2 - title_txt.get_width() // 2
-        ty = 50
-        self.screen.blit(shadow_txt, (tx + 3, ty + 3))
-        self.screen.blit(glow_txt, (tx + 1, ty + 1))
-        self.screen.blit(title_txt, (tx, ty))
+        l2_txt = self.font_title_big.render("TWO SUNS", True, (255, 215, 60))
+        l2_glow = self.font_title_big.render("TWO SUNS", True, (236, 72, 153))
+        l2_shadow = self.font_title_big.render("TWO SUNS", True, (0, 0, 0))
 
-        self.draw_vector_star(self.screen, tx - 36, ty + 12, size=24, color=(255, 215, 60))
-        self.draw_vector_star(self.screen, tx + title_txt.get_width() + 12, ty + 12, size=24, color=(168, 85, 247))
+        t1_x = WINDOW_WIDTH // 2 - l1_txt.get_width() // 2
+        t1_y = 20
+        self.screen.blit(l1_shadow, (t1_x + 3, t1_y + 3))
+        self.screen.blit(l1_glow, (t1_x + 1, t1_y + 1))
+        self.screen.blit(l1_txt, (t1_x, t1_y))
+
+        t2_x = WINDOW_WIDTH // 2 - l2_txt.get_width() // 2
+        t2_y = 66
+        self.screen.blit(l2_shadow, (t2_x + 3, t2_y + 3))
+        self.screen.blit(l2_glow, (t2_x + 1, t2_y + 1))
+        self.screen.blit(l2_txt, (t2_x, t2_y))
+
+        self.draw_vector_star(self.screen, t1_x - 34, t1_y + 10, size=22, color=(255, 215, 60))
+        self.draw_vector_star(self.screen, t1_x + l1_txt.get_width() + 12, t1_y + 10, size=22, color=(168, 85, 247))
+        self.draw_vector_star(self.screen, t2_x - 30, t2_y + 10, size=18, color=(236, 72, 153))
+        self.draw_vector_star(self.screen, t2_x + l2_txt.get_width() + 12, t2_y + 10, size=18, color=(255, 215, 60))
+
+        btn_w, btn_h = 410, 48
+        bx = WINDOW_WIDTH // 2 - btn_w // 2
+        start_y = 175
+        gap = 58
+
+        plate_w, plate_h = 450, 196
+        plate_x = WINDOW_WIDTH // 2 - plate_w // 2
+        plate_y = start_y - 12
+        plate_surf = pygame.Surface((plate_w, plate_h), pygame.SRCALPHA)
+        pygame.draw.rect(plate_surf, (12, 9, 20, 195), (0, 0, plate_w, plate_h), border_radius=12)
+        pygame.draw.rect(plate_surf, (190, 150, 80, 110), (0, 0, plate_w, plate_h), 1, border_radius=12)
+        self.screen.blit(plate_surf, (plate_x, plate_y))
+
+        buttons = {
+            'play': pygame.Rect(bx, start_y, btn_w, btn_h),
+            'tutorial': pygame.Rect(bx, start_y + gap, btn_w, btn_h),
+            'multiplayer': pygame.Rect(bx, start_y + gap * 2, btn_w, btn_h),
+            'characters': pygame.Rect(bx, start_y + gap * 2, btn_w, btn_h),
+            'settings': pygame.Rect(32, 28, 175, 42),
+            'rules': pygame.Rect(WINDOW_WIDTH - 207, 28, 175, 42),
+            'quit': pygame.Rect(32, WINDOW_HEIGHT - 62, 175, 42),
+            'credits': pygame.Rect(WINDOW_WIDTH - 207, WINDOW_HEIGHT - 62, 175, 42)
+        }
+
+        self.draw_button(buttons['play'], "JUGAR PARTIDA BÉLICA", mouse_pos, primary=True, icon_name="btn_play")
+        self.draw_button(buttons['tutorial'], "TUTORIAL", mouse_pos, icon_name="btn_tutorial")
+        self.draw_button(buttons['multiplayer'], "MODO MULTIJUGADOR LOCAL", mouse_pos, icon_name="btn_characters")
+        self.draw_button(buttons['settings'], "AJUSTES", mouse_pos, icon_name="btn_settings")
+        self.draw_button(buttons['rules'], "REGLAS", mouse_pos, icon_name="btn_rules")
+        self.draw_button(buttons['quit'], "SALIR", mouse_pos, icon_name="btn_quit")
+        self.draw_button(buttons['credits'], "CRÉDITOS", mouse_pos, icon_name="btn_oracle")
+
+        showcase_rect = pygame.Rect(WINDOW_WIDTH - 290, 163, 260, 335)
+        self.draw_menu_duel_showcase(showcase_rect, mouse_pos)
+
+        factions_info = [
+            ("Solcardena", (255, 215, 0)),
+            ("Royaume D'Aurelium", (177, 156, 217)),
+            ("Imperio de Varkhental", (255, 80, 80)),
+            ("Imperio Sthalgard", (78, 205, 145))
+        ]
+        left_pill_x = 32
+        pill_w = 175
+        pill_h = 24
+        pill_gap = 28
+        for fi, (fname, fcol) in enumerate(factions_info):
+            py = 78 + fi * pill_gap
+            pill_rect = pygame.Rect(left_pill_x, py, pill_w, pill_h)
+            pill_surf = pygame.Surface((pill_rect.width, pill_rect.height), pygame.SRCALPHA)
+            pygame.draw.rect(pill_surf, (18, 14, 26, 190), (0, 0, pill_rect.width, pill_rect.height), border_radius=11)
+            pygame.draw.rect(pill_surf, (*fcol, 140), (0, 0, pill_rect.width, pill_rect.height), 1, border_radius=11)
+            pygame.draw.circle(pill_surf, fcol, (10, pill_rect.height // 2), 4)
+            self.screen.blit(pill_surf, (pill_rect.x, pill_rect.y))
+            tag_surf = self.font_small.render(fname, True, fcol)
+            self.screen.blit(tag_surf, (pill_rect.x + 20, pill_rect.centery - tag_surf.get_height() // 2))
 
         badge_w = 580
-        badge_rect = pygame.Rect(WINDOW_WIDTH // 2 - badge_w // 2, ty + 56, badge_w, 28)
+        badge_y = WINDOW_HEIGHT - 55
+        badge_rect = pygame.Rect(WINDOW_WIDTH // 2 - badge_w // 2, badge_y, badge_w, 28)
         badge_surf = pygame.Surface((badge_w, 28), pygame.SRCALPHA)
         pygame.draw.rect(badge_surf, (15, 12, 24, 180), (0, 0, badge_w, 28), border_radius=14)
         pygame.draw.rect(badge_surf, (168, 85, 247, 120), (0, 0, badge_w, 28), 1, border_radius=14)
@@ -220,62 +452,7 @@ class MenuManager:
         sub_txt = self.font_small.render("4 NACIONES EN CONFLICTO   ·   TRINCHERAS 16×16   ·   CAMPO DE BATALLA SAGRADO", True, (220, 215, 240))
         self.screen.blit(sub_txt, (badge_rect.x + 36, badge_rect.y + 6))
 
-        plate_w, plate_h = 440, 440
-        plate_x = WINDOW_WIDTH // 2 - plate_w // 2
-        plate_y = 145
-        plate_surf = pygame.Surface((plate_w, plate_h), pygame.SRCALPHA)
-        pygame.draw.rect(plate_surf, (12, 9, 20, 195), (0, 0, plate_w, plate_h), border_radius=12)
-        pygame.draw.rect(plate_surf, (190, 150, 80, 110), (0, 0, plate_w, plate_h), 1, border_radius=12)
-        self.screen.blit(plate_surf, (plate_x, plate_y))
-
-        btn_w, btn_h = 390, 40
-        bx = WINDOW_WIDTH // 2 - btn_w // 2
-        start_y = 155
-        gap = 48
-
-        buttons = {
-            'play': pygame.Rect(bx, start_y, btn_w, btn_h),
-            'tutorial': pygame.Rect(bx, start_y + gap, btn_w, btn_h),
-            'characters': pygame.Rect(bx, start_y + gap * 2, btn_w, btn_h),
-            'missions': pygame.Rect(bx, start_y + gap * 3, btn_w, btn_h),
-            'settings': pygame.Rect(bx, start_y + gap * 4, btn_w, btn_h),
-            'rules': pygame.Rect(bx, start_y + gap * 5, btn_w, btn_h),
-            'credits': pygame.Rect(bx, start_y + gap * 6, btn_w, btn_h),
-            'quit': pygame.Rect(bx, start_y + gap * 7, btn_w, btn_h)
-        }
-
-        self.draw_button(buttons['play'], "JUGAR PARTIDA BÉLICA", mouse_pos, primary=True, icon_name="btn_play")
-        self.draw_button(buttons['tutorial'], "INSTRUCCIÓN MILITAR (TUTORIAL)", mouse_pos, icon_name="btn_tutorial")
-        self.draw_button(buttons['characters'], "COMANDANTES Y FACCIONES", mouse_pos, icon_name="btn_characters")
-        self.draw_button(buttons['missions'], "MISIONES Y RECOMPENSAS", mouse_pos, icon_name="btn_missions")
-        self.draw_button(buttons['settings'], "AJUSTES DE AUDIO Y SISTEMA", mouse_pos, icon_name="btn_settings")
-        self.draw_button(buttons['rules'], "ENCICLOPEDIA Y REGLAS", mouse_pos, icon_name="btn_rules")
-        self.draw_button(buttons['credits'], "CRÉDITOS Y COMUNIDAD", mouse_pos, icon_name="btn_oracle")
-        self.draw_button(buttons['quit'], "SALIR DEL JUEGO", mouse_pos, icon_name="btn_quit")
-
-        ft_y = WINDOW_HEIGHT - 48
-        factions_info = [
-            ("Solcardena", (255, 215, 0)),
-            ("Royaume D'Aurelium", (177, 156, 217)),
-            ("Imperio de Varkhental", (255, 80, 80)),
-            ("Imperio Sthalgard", (78, 205, 145))
-        ]
-        total_bar_w = 800
-        start_f_x = WINDOW_WIDTH // 2 - total_bar_w // 2
-        f_gap = total_bar_w // 4
-
-        for fi, (fname, fcol) in enumerate(factions_info):
-            fx = start_f_x + fi * f_gap
-            pill_rect = pygame.Rect(fx, ft_y - 2, f_gap - 12, 22)
-            pill_surf = pygame.Surface((pill_rect.width, pill_rect.height), pygame.SRCALPHA)
-            pygame.draw.rect(pill_surf, (18, 14, 26, 190), (0, 0, pill_rect.width, pill_rect.height), border_radius=11)
-            pygame.draw.rect(pill_surf, (*fcol, 140), (0, 0, pill_rect.width, pill_rect.height), 1, border_radius=11)
-            pygame.draw.circle(pill_surf, fcol, (10, pill_rect.height // 2), 4)
-            self.screen.blit(pill_surf, (pill_rect.x, pill_rect.y))
-            tag_surf = self.font_small.render(fname, True, fcol)
-            self.screen.blit(tag_surf, (pill_rect.x + 20, pill_rect.centery - tag_surf.get_height() // 2))
-
-        ft_txt = self.font_small.render("Chronicles Of Two Suns T2 · Pygame Edition · 60 FPS", True, (140, 130, 155))
+        ft_txt = self.font_small.render("Chronicles Of Two Suns · Pygame Edition · 60 FPS", True, (140, 130, 155))
         self.screen.blit(ft_txt, (WINDOW_WIDTH // 2 - ft_txt.get_width() // 2, WINDOW_HEIGHT - 22))
 
         return buttons
@@ -362,6 +539,151 @@ class MenuManager:
 
         return {
             'chars': char_buttons,
+            'start': btn_start,
+            'back': btn_back
+        }
+
+    def draw_multiplayer_menu(self, mouse_pos):
+        self.draw_ambient_bg()
+
+        hdr = self.font_title.render("MODO MULTIJUGADOR LOCAL (PASO Y JUEGA)", True, COLOR_TEXT_GOLD)
+        self.screen.blit(hdr, (WINDOW_WIDTH // 2 - hdr.get_width() // 2, 22))
+
+        sub = self.font_body.render("Comanda facciones con amigos en la misma pantalla · Asigna cada ejército a un Jugador o a la IA", True, COLOR_TEXT_MUTED)
+        self.screen.blit(sub, (WINDOW_WIDTH // 2 - sub.get_width() // 2, 60))
+
+        presets_info = [
+            ('1v1_duel', "⚡ 1 vs 1 (Duelo Solar)"),
+            ('coop_2v2', "🛡 2 vs 2 (Coop vs IA)"),
+            ('1v1_team', "⚔ 1 vs 1 (Guerra Total)"),
+            ('4p', "👑 4 Jugadores Humanos")
+        ]
+
+        preset_btns = {}
+        total_p_w = 1120
+        start_p_x = (WINDOW_WIDTH - total_p_w) // 2
+        p_gap = 14
+        p_btn_w = (total_p_w - p_gap * 3) // 4
+        p_btn_h = 36
+        p_y = 92
+
+        for i, (pid, plabel) in enumerate(presets_info):
+            px = start_p_x + i * (p_btn_w + p_gap)
+            p_rect = pygame.Rect(px, p_y, p_btn_w, p_btn_h)
+            preset_btns[pid] = p_rect
+
+            is_active = self.mp_preset == pid
+            hover = p_rect.collidepoint(mouse_pos)
+
+            if is_active:
+                bg = (60, 48, 20)
+                border = COLOR_TEXT_GOLD
+                txt_col = COLOR_TEXT_GOLD
+            elif hover:
+                bg = (35, 30, 24)
+                border = (200, 180, 130)
+                txt_col = (255, 240, 200)
+            else:
+                bg = (20, 18, 16)
+                border = (65, 55, 45)
+                txt_col = (180, 170, 160)
+
+            pygame.draw.rect(self.screen, bg, p_rect, border_radius=6)
+            pygame.draw.rect(self.screen, border, p_rect, 2 if is_active else 1, border_radius=6)
+
+            lbl = self.font_bold.render(plabel, True, txt_col)
+            self.screen.blit(lbl, (p_rect.centerx - lbl.get_width() // 2, p_rect.centery - lbl.get_height() // 2))
+
+        card_w, card_h = 270, 360
+        start_x = (WINDOW_WIDTH - (card_w * 4 + 20 * 3)) // 2
+        cards_y = 140
+
+        slot_buttons = {}
+        for i, cid in enumerate(['S', 'A', 'J', 'K']):
+            cdata = CHARACTERS[cid]
+            cx = start_x + i * (card_w + 20)
+            c_rect = pygame.Rect(cx, cards_y, card_w, card_h)
+            slot_buttons[cid] = c_rect
+
+            mode = self.mp_slots.get(cid, 'human')
+            is_human = mode == 'human'
+            hover = c_rect.collidepoint(mouse_pos)
+
+            if is_human:
+                bg = (32, 28, 20) if not hover else (40, 35, 25)
+                border_col = cdata['color'] if hover else (210, 180, 110)
+            else:
+                bg = (18, 18, 22) if not hover else (24, 24, 30)
+                border_col = (70, 80, 100) if hover else (45, 50, 65)
+
+            pygame.draw.rect(self.screen, bg, c_rect, border_radius=10)
+            pygame.draw.rect(self.screen, border_col, c_rect, 2 if hover else 1, border_radius=10)
+            pygame.draw.rect(self.screen, cdata['color'], (cx, cards_y, card_w, 5), border_top_left_radius=10, border_top_right_radius=10)
+
+            pygame.draw.circle(self.screen, cdata['bg'], (cx + card_w // 2, cards_y + 55), 36)
+            pygame.draw.circle(self.screen, cdata['color'], (cx + card_w // 2, cards_y + 55), 36, 2)
+            gen_surf = PieceGraphics.get_piece_surface(cid, 'K', size=46)
+            self.screen.blit(gen_surf, (cx + card_w // 2 - 23, cards_y + 55 - 23))
+
+            n_txt = self.font_header.render(cdata['name'].split(',')[0], True, cdata['color'])
+            self.screen.blit(n_txt, (cx + card_w // 2 - n_txt.get_width() // 2, cards_y + 104))
+
+            f_txt = self.font_small.render(f"{cdata['faction']}", True, COLOR_TEXT_LIGHT)
+            self.screen.blit(f_txt, (cx + card_w // 2 - f_txt.get_width() // 2, cards_y + 128))
+
+            t_txt = self.font_small.render(f"Equipo: {cdata['team']}", True, (200, 180, 120))
+            self.screen.blit(t_txt, (cx + card_w // 2 - t_txt.get_width() // 2, cards_y + 148))
+
+            toggle_box = pygame.Rect(cx + 16, cards_y + 185, card_w - 32, 90)
+            if is_human:
+                t_bg = (24, 50, 32)
+                t_border = (78, 205, 145)
+                m_title = "👤 JUGADOR HUMANO"
+                m_color = (120, 255, 180)
+                m_sub = "Control manual de tropas"
+                m_sub2 = "Toma turnos y usa cartas"
+            else:
+                t_bg = (20, 24, 38)
+                t_border = (90, 120, 170)
+                m_title = "🤖 INTELIGENCIA ARTIFICIAL"
+                m_color = (130, 180, 255)
+                m_sub = "Controlado por la máquina"
+                m_sub2 = "Tácticas automáticas de IA"
+
+            pygame.draw.rect(self.screen, t_bg, toggle_box, border_radius=8)
+            pygame.draw.rect(self.screen, t_border, toggle_box, 2, border_radius=8)
+
+            mt_surf = self.font_bold.render(m_title, True, m_color)
+            self.screen.blit(mt_surf, (toggle_box.centerx - mt_surf.get_width() // 2, toggle_box.y + 12))
+
+            ms_surf = self.font_small.render(m_sub, True, (210, 210, 210))
+            self.screen.blit(ms_surf, (toggle_box.centerx - ms_surf.get_width() // 2, toggle_box.y + 40))
+
+            ms2_surf = self.font_small.render(m_sub2, True, (160, 160, 170))
+            self.screen.blit(ms2_surf, (toggle_box.centerx - ms2_surf.get_width() // 2, toggle_box.y + 60))
+
+            prompt_box = pygame.Rect(cx + 20, cards_y + 300, card_w - 40, 34)
+            p_bg = (50, 42, 25) if hover else (25, 22, 18)
+            pygame.draw.rect(self.screen, p_bg, prompt_box, border_radius=6)
+            pygame.draw.rect(self.screen, (120, 100, 70), prompt_box, 1, border_radius=6)
+            prompt_txt = self.font_badge.render("CLIC PARA ALTERNAR ROL ⟲", True, (240, 220, 160))
+            self.screen.blit(prompt_txt, (prompt_box.centerx - prompt_txt.get_width() // 2, prompt_box.centery - prompt_txt.get_height() // 2))
+
+        human_cnt = sum(1 for m in self.mp_slots.values() if m == 'human')
+        ai_cnt = 4 - human_cnt
+        summary_str = f"CONFIGURACIÓN: {human_cnt} Facciones Humanas · {ai_cnt} Facciones IA"
+        sum_txt = self.font_header.render(summary_str, True, COLOR_TEXT_GOLD)
+        self.screen.blit(sum_txt, (WINDOW_WIDTH // 2 - sum_txt.get_width() // 2, 518))
+
+        btn_start = pygame.Rect(WINDOW_WIDTH // 2 - 200, 560, 400, 48)
+        btn_back = pygame.Rect(WINDOW_WIDTH // 2 - 200, 620, 400, 38)
+
+        self.draw_button(btn_start, "COMENZAR PARTIDA MULTIJUGADOR", mouse_pos, primary=True, icon_name="btn_play")
+        self.draw_button(btn_back, "VOLVER AL MENÚ", mouse_pos, icon_name="btn_back")
+
+        return {
+            'presets': preset_btns,
+            'slots': slot_buttons,
             'start': btn_start,
             'back': btn_back
         }
@@ -580,123 +902,340 @@ class MenuManager:
 
         return {'back': btn_back}
 
+    def get_fade_surfaces(self, width, fade_h, bg_color=(16, 13, 22)):
+        if (self.credits_top_fade is not None and 
+            self.credits_top_fade.get_width() == width and 
+            self.credits_top_fade.get_height() == fade_h):
+            return self.credits_top_fade, self.credits_bot_fade
+
+        top_fade = pygame.Surface((width, fade_h), pygame.SRCALPHA)
+        bot_fade = pygame.Surface((width, fade_h), pygame.SRCALPHA)
+        for y in range(fade_h):
+            ratio = y / float(fade_h)
+            alpha_top = int(255 * ((1.0 - ratio) ** 1.3))
+            pygame.draw.line(top_fade, (*bg_color, alpha_top), (0, y), (width, y))
+            alpha_bot = int(255 * (ratio ** 1.3))
+            pygame.draw.line(bot_fade, (*bg_color, alpha_bot), (0, y), (width, y))
+
+        self.credits_top_fade = top_fade
+        self.credits_bot_fade = bot_fade
+        return top_fade, bot_fade
+
+    def build_credits_surface(self, content_w):
+        est_h = 2400
+        temp_surf = pygame.Surface((content_w, est_h), pygame.SRCALPHA)
+        temp_surf.fill((16, 13, 22))
+
+        cx = content_w // 2
+        y = 35
+
+        def draw_banner(y_pos, title, width=640):
+            rx = cx - width // 2
+            pill_surf = pygame.Surface((width, 28), pygame.SRCALPHA)
+            pygame.draw.rect(pill_surf, (28, 20, 38, 230), (0, 0, width, 28), border_radius=14)
+            pygame.draw.rect(pill_surf, (212, 175, 55, 180), (0, 0, width, 28), 1, border_radius=14)
+            temp_surf.blit(pill_surf, (rx, y_pos))
+            self.draw_vector_star(temp_surf, rx + 14, y_pos + 6, size=16, color=(255, 215, 60))
+            self.draw_vector_star(temp_surf, rx + width - 30, y_pos + 6, size=16, color=(255, 215, 60))
+            txt = self.font_bold.render(title, True, (255, 225, 120))
+            temp_surf.blit(txt, (cx - txt.get_width() // 2, y_pos + 5))
+            return y_pos + 42
+
+        t_sh = self.font_title_big.render("CHRONICLES OF TWO SUNS", True, (0, 0, 0))
+        t_gl = self.font_title_big.render("CHRONICLES OF TWO SUNS", True, (168, 85, 247))
+        t_main = self.font_title_big.render("CHRONICLES OF TWO SUNS", True, (255, 220, 100))
+        temp_surf.blit(t_sh, (cx - t_main.get_width() // 2 + 2, y + 2))
+        temp_surf.blit(t_gl, (cx - t_main.get_width() // 2 + 1, y + 1))
+        temp_surf.blit(t_main, (cx - t_main.get_width() // 2, y))
+        self.draw_vector_star(temp_surf, cx - t_main.get_width() // 2 - 36, y + 8, size=22, color=(255, 215, 60))
+        self.draw_vector_star(temp_surf, cx + t_main.get_width() // 2 + 14, y + 8, size=22, color=(168, 85, 247))
+        y += 48
+
+        sub1 = self.font_header.render("EL CONFLICTO DE LOS DOS SOLES", True, (215, 195, 245))
+        temp_surf.blit(sub1, (cx - sub1.get_width() // 2, y))
+        y += 30
+
+        quote = self.font_small.render("«En la encrucijada de dos soles ardientes, el destino de cuatro imperios se decide en cada movimiento.»", True, (190, 180, 210))
+        temp_surf.blit(quote, (cx - quote.get_width() // 2, y))
+        y += 24
+
+        pygame.draw.line(temp_surf, (180, 145, 65), (cx - 240, y + 6), (cx + 240, y + 6), 1)
+        self.draw_vector_star(temp_surf, cx - 7, y, size=14, color=(255, 215, 60))
+        y += 32
+
+        y = draw_banner(y, "IDEA ORIGINAL, CONCEPTO E HISTORIA")
+        c_box = pygame.Rect(cx - 390, y, 780, 80)
+        pygame.draw.rect(temp_surf, (22, 18, 30), c_box, border_radius=10)
+        pygame.draw.rect(temp_surf, (75, 60, 95), c_box, 1, border_radius=10)
+        name1 = self.font_title.render("Josue Gomez", True, (255, 235, 150))
+        alias1 = self.font_bold.render("(Fundador de la Saga · Alias: Sadezu)", True, (180, 150, 235))
+        desc1 = self.font_body.render("Creador del universo, trasfondo mitológico, reglas de guerra y diseño narrativo original.", True, COLOR_TEXT_LIGHT)
+        surf_w_names = name1.get_width() + alias1.get_width() + 10
+        temp_surf.blit(name1, (cx - surf_w_names // 2, y + 14))
+        temp_surf.blit(alias1, (cx - surf_w_names // 2 + name1.get_width() + 10, y + 20))
+        temp_surf.blit(desc1, (cx - desc1.get_width() // 2, y + 48))
+        y += 105
+
+        y = draw_banner(y, "DESARROLLO DE SOFTWARE Y ARQUITECTURA")
+        card_w = 425
+        card_h = 88
+        l_rect = pygame.Rect(cx - card_w - 12, y, card_w, card_h)
+        pygame.draw.rect(temp_surf, (22, 18, 30), l_rect, border_radius=10)
+        pygame.draw.rect(temp_surf, (75, 60, 95), l_rect, 1, border_radius=10)
+        ln = self.font_header.render("Josue Gomez", True, (255, 220, 120))
+        lr = self.font_small.render("Arquitectura del juego, balance táctico y combate", True, COLOR_TEXT_LIGHT)
+        temp_surf.blit(ln, (l_rect.centerx - ln.get_width() // 2, y + 16))
+        temp_surf.blit(lr, (l_rect.centerx - lr.get_width() // 2, y + 46))
+
+        r_rect = pygame.Rect(cx + 12, y, card_w, card_h)
+        pygame.draw.rect(temp_surf, (22, 18, 30), r_rect, border_radius=10)
+        pygame.draw.rect(temp_surf, (75, 60, 95), r_rect, 1, border_radius=10)
+        rn = self.font_header.render("Oliver Camacho", True, (255, 220, 120))
+        rr = self.font_small.render("Desarrollo de software, sistemas de tablero y optimización", True, COLOR_TEXT_LIGHT)
+        temp_surf.blit(rn, (r_rect.centerx - rn.get_width() // 2, y + 16))
+        temp_surf.blit(rr, (r_rect.centerx - rr.get_width() // 2, y + 46))
+        y += 112
+
+        y = draw_banner(y, "EL ORIGEN: UNA SAGA COMUNITARIA (2018 - 2026+)")
+        hist_box = pygame.Rect(cx - 435, y, 870, 116)
+        pygame.draw.rect(temp_surf, (20, 16, 28), hist_box, border_radius=10)
+        pygame.draw.rect(temp_surf, (160, 125, 60), hist_box, 1, border_radius=10)
+        lines_h = [
+            "Nacido en 2018 del servidor de roleplay y Dungeons & Dragons que Josue fundó bajo el alias de Sadezu,",
+            "y de su gran sueño de crear un videojuego estilo RPG táctico ambientado en ese fascinante mundo.",
+            "Cada partida, cada victoria y cada comandante a lo largo de 8 años vive en este tablero.",
+            "«Todo lo vivido por los jugadores de las eras anteriores forma parte viva de la historia de este juego.»"
+        ]
+        hy = y + 14
+        for idx, lh in enumerate(lines_h):
+            col = (255, 220, 140) if idx == 3 else ((225, 220, 235) if idx < 2 else (200, 190, 215))
+            fnt = self.font_bold if idx == 3 else self.font_small
+            ls = fnt.render(lh, True, col)
+            temp_surf.blit(ls, (cx - ls.get_width() // 2, hy))
+            hy += 23
+        y += 140
+
+        y = draw_banner(y, "CRONOLOGÍA DE LAS CUATRO GRANDES ERAS")
+        eras = [
+            ("2018 – 2019", "THE ABYSS", "El surgimiento de las primeras fuerzas primordiales y la caída de los antiguos reinos.", (255, 215, 90)),
+            ("2020 – 2024", "THE EXODUS CHRONICLES", "La gran migración de los pueblos, la lucha por recursos sagrados y el alzamiento de nuevas naciones.", (180, 160, 230)),
+            ("2024 – 2025", "SOUL OF VELKANOR", "La encarnación del alma de Velkanor y las guerras de fuego y éter que fracturaron el continente.", (255, 100, 100)),
+            ("2026 – PRESENTE", "THE CHRONICLES OF TWO SUNS", "El amanecer de los Dos Soles celestiales y el choque final entre cuatro grandes imperios.", (78, 205, 145))
+        ]
+        for dates, ename, edesc, ecol in eras:
+            eb = pygame.Rect(cx - 435, y, 870, 52)
+            pygame.draw.rect(temp_surf, (20, 16, 26), eb, border_radius=8)
+            pygame.draw.rect(temp_surf, (*ecol, 140), eb, 1, border_radius=8)
+            pygame.draw.rect(temp_surf, ecol, (eb.x, eb.y + 8, 4, 36), border_radius=2)
+            d_surf = self.font_bold.render(dates, True, ecol)
+            n_surf = self.font_header.render(ename, True, COLOR_TEXT_LIGHT)
+            desc_surf = self.font_small.render(edesc, True, (195, 190, 210))
+            temp_surf.blit(d_surf, (eb.x + 20, eb.y + 16))
+            temp_surf.blit(n_surf, (eb.x + 180, eb.y + 14))
+            temp_surf.blit(desc_surf, (eb.x + 400, eb.y + 18))
+            y += 60
+        y += 24
+
+        y = draw_banner(y, "LAS CUATRO NACIONES Y SUS COMANDANTES")
+        factions_data = [
+            ("Solcardena", "Helio, el Heraldo Solar", "Comandante Supremo de la Luz · Maestros del honor y expansión", (255, 215, 0)),
+            ("Royaume D'Aurelium", "Selene, Oráculo de las Mareas", "Reino Místico Lunar · Sabios alquimistas y devotos del éter", (177, 156, 217)),
+            ("Imperio de Varkhental", "Ignis, Señor de la Ceniza", "Fuerza volcánica de acero y fuego · Guerreros de implacable disciplina", (255, 80, 80)),
+            ("Imperio Sthalgard", "Kaelen, Guardia de Hierro", "Bastión esmeralda del norte · Titanes tácticos y defensa inexpugnable", (78, 205, 145))
+        ]
+        for idx, (fac_name, cmd_name, fac_desc, fac_col) in enumerate(factions_data):
+            col_idx = idx % 2
+            row_idx = idx // 2
+            bx = cx - 435 if col_idx == 0 else cx + 10
+            by_card = y + row_idx * 72
+            fb = pygame.Rect(bx, by_card, 425, 64)
+            pygame.draw.rect(temp_surf, (20, 16, 26), fb, border_radius=8)
+            pygame.draw.rect(temp_surf, (*fac_col, 150), fb, 1, border_radius=8)
+            pygame.draw.circle(temp_surf, fac_col, (fb.x + 18, fb.y + 20), 6)
+            fn_s = self.font_bold.render(fac_name, True, fac_col)
+            cn_s = self.font_small.render(f"Comandante: {cmd_name}", True, COLOR_TEXT_LIGHT)
+            fd_s = self.font_small.render(fac_desc, True, (170, 165, 185))
+            temp_surf.blit(fn_s, (fb.x + 32, fb.y + 11))
+            temp_surf.blit(cn_s, (fb.x + 32, fb.y + 28))
+            temp_surf.blit(fd_s, (fb.x + 32, fb.y + 44))
+        y += 2 * 72 + 24
+
+        y = draw_banner(y, "TECNOLOGÍA Y HERRAMIENTAS")
+        tb = pygame.Rect(cx - 435, y, 870, 94)
+        pygame.draw.rect(temp_surf, (20, 16, 28), tb, border_radius=8)
+        pygame.draw.rect(temp_surf, (70, 60, 90), tb, 1, border_radius=8)
+        tech_lines = [
+            "• Programado íntegramente en Python con Pygame-CE a 60 FPS estables",
+            "• Sistema de Inteligencia Artificial táctica con evaluación heurística posicional y perfiles por facción",
+            "• Generación procedural de audio retro y sintetizador para efectos de impacto y batalla",
+            "• Prototipo inicial y diseño conceptual desarrollado con apoyo de Claude (Anthropic)"
+        ]
+        ty = y + 10
+        for tl in tech_lines:
+            ts = self.font_small.render(tl, True, COLOR_TEXT_LIGHT)
+            temp_surf.blit(ts, (tb.x + 24, ty))
+            ty += 20
+        y += 116
+
+        y = draw_banner(y, "AGRADECIMIENTOS ESPECIALES")
+        ab = pygame.Rect(cx - 435, y, 870, 84)
+        pygame.draw.rect(temp_surf, (20, 16, 28), ab, border_radius=8)
+        pygame.draw.rect(temp_surf, (180, 140, 60), ab, 1, border_radius=8)
+        thx_lines = [
+            "A cada miembro de la comunidad de ayer y de hoy por construir y preservar esta historia.",
+            "A todos los jugadores por cada tirada de dados, cada duelo épico y por mantener vivo este sueño.",
+            "¡Sin ustedes, este universo no existiría!"
+        ]
+        ay = y + 12
+        for thx in thx_lines:
+            asurf = self.font_body.render(thx, True, (255, 230, 180) if thx == thx_lines[-1] else COLOR_TEXT_LIGHT)
+            temp_surf.blit(asurf, (cx - asurf.get_width() // 2, ay))
+            ay += 23
+        y += 110
+
+        y += 20
+        self.draw_vector_star(temp_surf, cx - 40, y + 4, size=18, color=(255, 215, 60))
+        self.draw_vector_star(temp_surf, cx, y, size=24, color=(255, 235, 120))
+        self.draw_vector_star(temp_surf, cx + 24, y + 4, size=18, color=(255, 215, 60))
+        y += 38
+
+        thx_big_sh = self.font_title_big.render("¡GRACIAS POR JUGAR!", True, (0, 0, 0))
+        thx_big_gl = self.font_title_big.render("¡GRACIAS POR JUGAR!", True, (168, 85, 247))
+        thx_big = self.font_title_big.render("¡GRACIAS POR JUGAR!", True, (255, 220, 80))
+        temp_surf.blit(thx_big_sh, (cx - thx_big.get_width() // 2 + 2, y + 2))
+        temp_surf.blit(thx_big_gl, (cx - thx_big.get_width() // 2 + 1, y + 1))
+        temp_surf.blit(thx_big, (cx - thx_big.get_width() // 2, y))
+        y += 48
+
+        end_sub = self.font_header.render("CHRONICLES OF TWO SUNS · TEMPORADA 2", True, (215, 195, 245))
+        temp_surf.blit(end_sub, (cx - end_sub.get_width() // 2, y))
+        y += 30
+
+        end_tag = self.font_small.render("«Que la gloria de los dos soles acompañe tu camino en el campo de batalla.»", True, (190, 180, 210))
+        temp_surf.blit(end_tag, (cx - end_tag.get_width() // 2, y))
+        y += 90
+
+        final_h = y
+        self.credits_content_h = final_h
+        self.credits_surface = pygame.Surface((content_w, final_h), pygame.SRCALPHA)
+        self.credits_surface.blit(temp_surf, (0, 0), (0, 0, content_w, final_h))
+        self.credits_max_scroll = max(0.0, float(final_h - 505))
+
     def draw_credits(self, mouse_pos):
         self.draw_ambient_bg()
 
-        hdr = self.font_title.render("CRÉDITOS Y ORIGEN DE LA SAGA", True, COLOR_TEXT_GOLD)
-        self.screen.blit(hdr, (WINDOW_WIDTH // 2 - hdr.get_width() // 2, 26))
+        anim_progress = min(1.0, self.credits_entrance_time / 0.5)
+        slide_offset = int((1.0 - anim_progress) ** 2 * 60)
 
-        box_w, box_h = 1020, 560
+        hdr_y = 22 - slide_offset
+        hdr = self.font_title.render("CRÉDITOS Y ORIGEN DE LA SAGA", True, COLOR_TEXT_GOLD)
+        hdr_sh = self.font_title.render("CRÉDITOS Y ORIGEN DE LA SAGA", True, (0, 0, 0))
+        tx = WINDOW_WIDTH // 2 - hdr.get_width() // 2
+        self.screen.blit(hdr_sh, (tx + 2, hdr_y + 2))
+        self.screen.blit(hdr, (tx, hdr_y))
+        self.draw_vector_star(self.screen, tx - 32, hdr_y + 8, size=18, color=(255, 215, 60))
+        self.draw_vector_star(self.screen, tx + hdr.get_width() + 14, hdr_y + 8, size=18, color=(168, 85, 247))
+
+        box_w, box_h = 1040, 520
         bx = WINDOW_WIDTH // 2 - box_w // 2
-        by = 74
+        by = 68 - slide_offset
 
         c_box = pygame.Rect(bx, by, box_w, box_h)
         pygame.draw.rect(self.screen, (16, 13, 22), c_box, border_radius=12)
         pygame.draw.rect(self.screen, (180, 140, 60), c_box, 1, border_radius=12)
         pygame.draw.rect(self.screen, (255, 215, 60), (bx, by, box_w, 3), border_radius=2)
 
-        left_x = bx + 36
-        y = by + 20
+        bracket_len = 16
+        c_gold = (255, 225, 120)
+        pygame.draw.line(self.screen, c_gold, (bx + 2, by + 2), (bx + 2 + bracket_len, by + 2), 2)
+        pygame.draw.line(self.screen, c_gold, (bx + 2, by + 2), (bx + 2, by + 2 + bracket_len), 2)
+        pygame.draw.line(self.screen, c_gold, (bx + box_w - 3, by + 2), (bx + box_w - 3 - bracket_len, by + 2), 2)
+        pygame.draw.line(self.screen, c_gold, (bx + box_w - 3, by + 2), (bx + box_w - 3, by + 2 + bracket_len), 2)
+        pygame.draw.line(self.screen, c_gold, (bx + 2, by + box_h - 3), (bx + 2 + bracket_len, by + box_h - 3), 2)
+        pygame.draw.line(self.screen, c_gold, (bx + 2, by + box_h - 3), (bx + 2, by + box_h - 3 - bracket_len), 2)
+        pygame.draw.line(self.screen, c_gold, (bx + box_w - 3, by + box_h - 3), (bx + box_w - 3 - bracket_len, by + box_h - 3), 2)
+        pygame.draw.line(self.screen, c_gold, (bx + box_w - 3, by + box_h - 3), (bx + box_w - 3, by + box_h - 3 - bracket_len), 2)
 
-        t1 = self.font_header.render("EL CONFLICTO DE LOS DOS SOLES", True, (255, 215, 120))
-        t2 = self.font_bold.render("The Chronicles Of Two Suns", True, (180, 160, 220))
-        self.screen.blit(t1, (left_x, y))
-        self.screen.blit(t2, (left_x, y + 24))
-        y += 54
+        vw = box_w - 34
+        vh = box_h - 14
+        vx = bx + 8
+        vy = by + 7
 
-        s1 = self.font_bold.render("IDEA ORIGINAL, CONCEPTO E HISTORIA", True, COLOR_TEXT_GOLD)
-        self.screen.blit(s1, (left_x, y))
-        y += 20
-        a1 = self.font_body.render("• Josue Gomez.", True, COLOR_TEXT_LIGHT)
-        self.screen.blit(a1, (left_x + 12, y))
-        y += 28
+        if self.credits_surface is None:
+            self.build_credits_surface(vw)
 
-        s2 = self.font_bold.render("DESARROLLO", True, COLOR_TEXT_GOLD)
-        self.screen.blit(s2, (left_x, y))
-        y += 20
-        a2 = self.font_body.render("• Josue Gomez", True, COLOR_TEXT_LIGHT)
-        a3 = self.font_body.render("• Oliver Camacho", True, COLOR_TEXT_LIGHT)
-        self.screen.blit(a2, (left_x + 12, y))
-        self.screen.blit(a3, (left_x + 12, y + 20))
-        y += 48
+        viewport_surf = pygame.Surface((vw, vh), pygame.SRCALPHA)
+        viewport_surf.fill((16, 13, 22))
 
-        s3 = self.font_bold.render("UN JUEGO DE LA COMUNIDAD", True, COLOR_TEXT_GOLD)
-        self.screen.blit(s3, (left_x, y))
-        y += 20
-        c_lines = [
-            "Nacido del servidor de roleplay y Dungeons & Dragons",
-            "que Josue fundó en 2018 bajo el alías de: Sadezu, y de su sueño",
-            "de crear un videojuego estilo RPG de ese mundo."
-        ]
-        for cl in c_lines:
-            cl_surf = self.font_small.render(cl, True, (215, 205, 225))
-            self.screen.blit(cl_surf, (left_x + 12, y))
-            y += 18
+        viewport_surf.blit(self.credits_surface, (0, int(-self.credits_scroll_y)))
 
-        right_col_x = bx + 530
-        ry = by + 20
+        fade_h = 55
+        top_f, bot_f = self.get_fade_surfaces(vw, fade_h, (16, 13, 22))
+        viewport_surf.blit(top_f, (0, 0))
+        viewport_surf.blit(bot_f, (0, vh - fade_h))
 
-        s4 = self.font_bold.render("LA SAGA DE LA COMUNIDAD", True, COLOR_TEXT_GOLD)
-        self.screen.blit(s4, (right_col_x, ry))
-        ry += 22
+        self.screen.blit(viewport_surf, (vx, vy))
 
-        saga_entries = [
-            ("The Abyss", "2018 - 2019"),
-            ("The Exodus Chronicles", "2020 - 2024"),
-            ("Soul Of Velkanor", "2024 - 2025"),
-            ("The Chronicles Of Two Suns", "2026 -")
-        ]
-        for sname, syears in saga_entries:
-            sn_surf = self.font_body.render(f"• {sname}", True, COLOR_TEXT_LIGHT)
-            sy_surf = self.font_bold.render(syears, True, (255, 215, 100))
-            self.screen.blit(sn_surf, (right_col_x + 12, ry))
-            self.screen.blit(sy_surf, (right_col_x + 290, ry))
-            ry += 22
+        track_w = 8
+        track_h = box_h - 32
+        track_x = bx + box_w - 18
+        track_y = by + 16
+        self.credits_track_top = track_y
+        self.credits_track_h = track_h
 
-        ry += 6
-        saga_quotes = [
-            "Todo lo vivido por los jugadores de las eras anteriores",
-            "forma parte de la historia de este juego."
-        ]
-        for sq in saga_quotes:
-            sq_surf = self.font_small.render(sq, True, (190, 175, 210))
-            self.screen.blit(sq_surf, (right_col_x + 12, ry))
-            ry += 18
+        track_rect = pygame.Rect(track_x, track_y, track_w, track_h)
+        pygame.draw.rect(self.screen, (28, 22, 38), track_rect, border_radius=4)
+        pygame.draw.rect(self.screen, (70, 55, 90), track_rect, 1, border_radius=4)
 
-        ry += 14
-        s5 = self.font_bold.render("TECNOLOGÍA", True, COLOR_TEXT_GOLD)
-        self.screen.blit(s5, (right_col_x, ry))
-        ry += 20
-        t_lines = [
-            "• Programado en Python",
-            "• Prototipo inicial creado con apoyo de Claude (Anthropic)"
-        ]
-        for tl in t_lines:
-            tl_surf = self.font_body.render(tl, True, COLOR_TEXT_LIGHT)
-            self.screen.blit(tl_surf, (right_col_x + 12, ry))
-            ry += 20
+        thumb_h = max(32, int(track_h * (vh / max(vh, self.credits_content_h))))
+        scroll_pct = self.credits_scroll_y / max(1.0, self.credits_max_scroll)
+        thumb_y = track_y + int((track_h - thumb_h) * scroll_pct)
+        thumb_rect = pygame.Rect(track_x, thumb_y, track_w, thumb_h)
 
-        ry += 14
-        s6 = self.font_bold.render("AGRADECIMIENTOS", True, COLOR_TEXT_GOLD)
-        self.screen.blit(s6, (right_col_x, ry))
-        ry += 20
-        thx_lines = [
-            "A cada miembro de la comunidad, de ayer y de hoy,",
-            "por construir esta historia."
-        ]
-        for thx in thx_lines:
-            thx_surf = self.font_small.render(thx, True, (225, 215, 235))
-            self.screen.blit(thx_surf, (right_col_x + 12, ry))
-            ry += 18
+        is_thumb_hover = thumb_rect.collidepoint(mouse_pos)
+        thumb_col = (255, 215, 60) if (is_thumb_hover or self.dragging_credits) else (180, 140, 60)
+        pygame.draw.rect(self.screen, thumb_col, thumb_rect, border_radius=4)
 
-        ry += 14
-        thanks_big = self.font_header.render("¡Gracias por jugar!", True, (255, 215, 80))
-        self.screen.blit(thanks_big, (right_col_x + 110, ry))
+        btn_y = WINDOW_HEIGHT - 56
+        btn_h = 38
+        w_back = 190
+        w_pause = 135
+        w_dir = 145
+        w_speed = 120
+        w_restart = 130
+        gap = 12
 
-        btn_back = pygame.Rect(WINDOW_WIDTH // 2 - 140, WINDOW_HEIGHT - 65, 280, 40)
+        total_dock_w = w_back + w_pause + w_dir + w_speed + w_restart + gap * 4
+        start_dock_x = WINDOW_WIDTH // 2 - total_dock_w // 2
+
+        btn_back = pygame.Rect(start_dock_x, btn_y, w_back, btn_h)
+        btn_pause = pygame.Rect(start_dock_x + w_back + gap, btn_y, w_pause, btn_h)
+        btn_dir = pygame.Rect(btn_pause.right + gap, btn_y, w_dir, btn_h)
+        btn_speed = pygame.Rect(btn_dir.right + gap, btn_y, w_speed, btn_h)
+        btn_restart = pygame.Rect(btn_speed.right + gap, btn_y, w_restart, btn_h)
+
         self.draw_button(btn_back, "VOLVER AL MENÚ", mouse_pos, icon_name="btn_back")
+        pause_txt = "▶ REANUDAR" if self.credits_paused else "⏸ PAUSAR"
+        self.draw_button(btn_pause, pause_txt, mouse_pos)
+        dir_txt = "DIR: ↓ BAJAR" if self.credits_direction == 1 else "DIR: ↑ SUBIR"
+        self.draw_button(btn_dir, dir_txt, mouse_pos)
+        self.draw_button(btn_speed, f"VEL: {self.credits_speed_mult:g}x", mouse_pos)
+        self.draw_button(btn_restart, "↺ REINICIAR", mouse_pos)
 
-        return {'back': btn_back}
+        hint_str = "Rueda del ratón [SCROLL] o flechas [↑/↓] para mover · [ESPACIO] pausar"
+        hint_surf = self.font_small.render(hint_str, True, (150, 140, 170))
+        self.screen.blit(hint_surf, (WINDOW_WIDTH // 2 - hint_surf.get_width() // 2, WINDOW_HEIGHT - 16))
+
+        return {
+            'back': btn_back,
+            'pause': btn_pause,
+            'direction': btn_dir,
+            'speed': btn_speed,
+            'restart': btn_restart,
+            'scrollbar': track_rect,
+            'track_top': track_y,
+            'track_h': track_h
+        }
 
     def draw_pause_modal(self, mouse_pos):
         overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)

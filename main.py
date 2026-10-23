@@ -12,6 +12,7 @@ from src.tutorial import TutorialController
 
 STATE_MENU = "menu"
 STATE_CHARACTERS = "characters"
+STATE_MULTIPLAYER = "multiplayer"
 STATE_MISSIONS = "missions"
 STATE_SETTINGS = "settings"
 STATE_RULES = "rules"
@@ -23,7 +24,7 @@ STATE_CREDITS = "credits"
 class ConflictoDosSoles:
     def __init__(self):
         pygame.init()
-        pygame.display.set_caption("☀ | Chronicles Of Two Suns T2")
+        pygame.display.set_caption("☀ | Chronicles Of Two Suns")
 
         self.settings = SettingsManager()
         self.audio = AudioManager()
@@ -77,6 +78,14 @@ class ConflictoDosSoles:
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         self.handle_escape()
+                    elif self.state == STATE_CREDITS:
+                        if event.key == pygame.K_SPACE:
+                            self.menu.toggle_credits_pause()
+                            self.audio.play_sfx("click")
+                        elif event.key in (pygame.K_DOWN, pygame.K_s):
+                            self.menu.scroll_credits(-50)
+                        elif event.key in (pygame.K_UP, pygame.K_w):
+                            self.menu.scroll_credits(50)
                     elif self.state in (STATE_PLAYING, STATE_TUTORIAL) and self.game and self.game.is_human_turn():
                         if event.key == pygame.K_SPACE:
                             self.game.next_turn()
@@ -95,11 +104,14 @@ class ConflictoDosSoles:
                 elif event.type == pygame.MOUSEWHEEL:
                     if self.state == STATE_MISSIONS:
                         self.menu.scroll_missions(event.y * 36)
+                    elif self.state == STATE_CREDITS:
+                        self.menu.scroll_credits(event.y * 45)
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     self.handle_click(mouse_pos)
                 elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                     self.menu.dragging_music = False
                     self.menu.dragging_sfx = False
+                    self.menu.dragging_credits = False
                 elif event.type == pygame.MOUSEMOTION:
                     self.handle_mouse_drag(mouse_pos)
 
@@ -131,7 +143,7 @@ class ConflictoDosSoles:
         elif self.state == STATE_PAUSED:
             self.state = STATE_PLAYING if not self.tutorial else STATE_TUTORIAL
             self.audio.play_sfx("click")
-        elif self.state in (STATE_CHARACTERS, STATE_MISSIONS, STATE_SETTINGS, STATE_RULES, STATE_CREDITS):
+        elif self.state in (STATE_CHARACTERS, STATE_MULTIPLAYER, STATE_MISSIONS, STATE_SETTINGS, STATE_RULES, STATE_CREDITS):
             self.state = STATE_MENU
             self.audio.play_sfx("click")
 
@@ -145,6 +157,9 @@ class ConflictoDosSoles:
                 slider_rect = pygame.Rect(WINDOW_WIDTH // 2 - 300 + 35, 120 + 35 + 85 + 36, 420, 12)
                 pct = max(0.0, min(1.0, (mouse_pos[0] - slider_rect.x) / slider_rect.width))
                 self.audio.set_sfx_volume(pct)
+        elif self.state == STATE_CREDITS:
+            if self.menu.dragging_credits:
+                self.menu.update_credits_scroll_from_mouse(mouse_pos[1])
 
     def handle_click(self, mouse_pos):
         if self.state == STATE_MENU:
@@ -155,22 +170,26 @@ class ConflictoDosSoles:
             elif btns['tutorial'].collidepoint(mouse_pos):
                 self.audio.play_sfx("select")
                 self.start_tutorial()
-            elif btns['characters'].collidepoint(mouse_pos):
+            elif btns.get('multiplayer') and btns['multiplayer'].collidepoint(mouse_pos):
                 self.audio.play_sfx("select")
-                self.state = STATE_CHARACTERS
-            elif btns['missions'].collidepoint(mouse_pos):
+                self.state = STATE_MULTIPLAYER
+            elif btns.get('characters') and btns['characters'].collidepoint(mouse_pos):
+                self.audio.play_sfx("select")
+                self.state = STATE_MULTIPLAYER
+            elif btns.get('missions') and btns['missions'].collidepoint(mouse_pos):
                 self.audio.play_sfx("select")
                 self.state = STATE_MISSIONS
-            elif btns['settings'].collidepoint(mouse_pos):
+            elif btns.get('settings') and btns['settings'].collidepoint(mouse_pos):
                 self.audio.play_sfx("select")
                 self.state = STATE_SETTINGS
-            elif btns['rules'].collidepoint(mouse_pos):
+            elif btns.get('rules') and btns['rules'].collidepoint(mouse_pos):
                 self.audio.play_sfx("select")
                 self.state = STATE_RULES
             elif btns.get('credits') and btns['credits'].collidepoint(mouse_pos):
                 self.audio.play_sfx("select")
+                self.menu.reset_credits()
                 self.state = STATE_CREDITS
-            elif btns['quit'].collidepoint(mouse_pos):
+            elif btns.get('quit') and btns['quit'].collidepoint(mouse_pos):
                 pygame.quit()
                 sys.exit()
 
@@ -183,6 +202,27 @@ class ConflictoDosSoles:
                     return
             if ui['start'].collidepoint(mouse_pos):
                 self.start_game(self.menu.selected_character_id)
+            elif ui['back'].collidepoint(mouse_pos):
+                self.audio.play_sfx("click")
+                self.state = STATE_MENU
+
+        elif self.state == STATE_MULTIPLAYER:
+            ui = self.menu.draw_multiplayer_menu(mouse_pos)
+            for cid, rect in ui['slots'].items():
+                if rect.collidepoint(mouse_pos):
+                    self.menu.toggle_mp_slot(cid)
+                    self.audio.play_sfx("select")
+                    return
+            for pid, rect in ui['presets'].items():
+                if rect.collidepoint(mouse_pos):
+                    self.menu.set_mp_preset(pid)
+                    self.audio.play_sfx("select")
+                    return
+            if ui['start'].collidepoint(mouse_pos):
+                humans = [c for c, m in self.menu.mp_slots.items() if m == 'human']
+                if not humans:
+                    humans = ['S']
+                self.start_game(humans)
             elif ui['back'].collidepoint(mouse_pos):
                 self.audio.play_sfx("click")
                 self.state = STATE_MENU
@@ -232,6 +272,21 @@ class ConflictoDosSoles:
             if ui.get('back') and ui['back'].collidepoint(mouse_pos):
                 self.audio.play_sfx("click")
                 self.state = STATE_MENU
+            elif ui.get('pause') and ui['pause'].collidepoint(mouse_pos):
+                self.audio.play_sfx("click")
+                self.menu.toggle_credits_pause()
+            elif ui.get('direction') and ui['direction'].collidepoint(mouse_pos):
+                self.audio.play_sfx("click")
+                self.menu.toggle_credits_direction()
+            elif ui.get('speed') and ui['speed'].collidepoint(mouse_pos):
+                self.audio.play_sfx("click")
+                self.menu.toggle_credits_speed()
+            elif ui.get('restart') and ui['restart'].collidepoint(mouse_pos):
+                self.audio.play_sfx("select")
+                self.menu.reset_credits()
+            elif ui.get('scrollbar') and ui['scrollbar'].collidepoint(mouse_pos):
+                self.menu.dragging_credits = True
+                self.menu.update_credits_scroll_from_mouse(mouse_pos[1])
 
         elif self.state == STATE_PAUSED:
             ui = self.menu.draw_pause_modal(mouse_pos)
@@ -242,7 +297,7 @@ class ConflictoDosSoles:
                 if self.tutorial:
                     self.start_tutorial()
                 else:
-                    self.start_game(self.game.human)
+                    self.start_game(self.game.human_factions)
             elif ui['quit'].collidepoint(mouse_pos):
                 self.audio.play_sfx("click")
                 self.state = STATE_MENU
@@ -250,20 +305,23 @@ class ConflictoDosSoles:
 
         elif self.state in (STATE_PLAYING, STATE_TUTORIAL):
             if self.state == STATE_PLAYING and self.game.game_over:
-                player_team = TEAM[self.game.human]
-                if self.game.winner_team is not None and self.game.winner_team == player_team:
-                    v_ui = self.menu.draw_victory_modal(TEAM_NAMES[self.game.winner_team], self.game.win_reason, mouse_pos)
+                winner_t = self.game.winner_team
+                human_teams = set(TEAM[f] for f in self.game.human_factions)
+                is_mp = len(self.game.human_factions) > 1
+                if is_mp or (winner_t is not None and winner_t in human_teams):
+                    t_name = TEAM_NAMES[winner_t] if winner_t is not None else "Victoria"
+                    v_ui = self.menu.draw_victory_modal(t_name, self.game.win_reason, mouse_pos)
                     if v_ui['replay'].collidepoint(mouse_pos):
-                        self.start_game(self.game.human)
+                        self.start_game(self.game.human_factions)
                     elif v_ui['menu'].collidepoint(mouse_pos):
                         self.state = STATE_MENU
                         self.audio.play_music("music_menu")
                     return
                 else:
-                    enemy = TEAM_NAMES[self.game.winner_team] if self.game.winner_team is not None else None
+                    enemy = TEAM_NAMES[winner_t] if winner_t is not None else None
                     g_ui = self.menu.draw_game_over_modal(self.game.win_reason, mouse_pos, enemy_team=enemy)
                     if g_ui['retry'].collidepoint(mouse_pos):
-                        self.start_game(self.game.human)
+                        self.start_game(self.game.human_factions)
                     elif g_ui['menu'].collidepoint(mouse_pos):
                         self.state = STATE_MENU
                         self.audio.play_music("music_menu")
@@ -357,8 +415,14 @@ class ConflictoDosSoles:
 
         if self.game.selected and (r, c) in self.game.moves:
             fr, fc = self.game.selected
-            if self.game.board[r][c] and self.game.board[r][c] != 'BLOCKED':
-                self.game.attack(fr, fc, r, c)
+            target_piece = self.game.board[r][c]
+            if target_piece and target_piece != 'BLOCKED':
+                from src.constants import TEAM
+                if TEAM[target_piece[0]] == TEAM[self.game.board[fr][fc][0]]:
+                    self.game.swap_pieces(fr, fc, r, c)
+                    self.audio.play_sfx("move")
+                else:
+                    self.game.attack(fr, fc, r, c)
             else:
                 self.game.move_piece(fr, fc, r, c)
                 self.audio.play_sfx("move")
@@ -377,6 +441,8 @@ class ConflictoDosSoles:
             self.menu.draw_main_menu(mouse_pos)
         elif self.state == STATE_CHARACTERS:
             self.menu.draw_character_select(mouse_pos)
+        elif self.state == STATE_MULTIPLAYER:
+            self.menu.draw_multiplayer_menu(mouse_pos)
         elif self.state == STATE_MISSIONS:
             self.menu.draw_missions(mouse_pos)
         elif self.state == STATE_SETTINGS:
@@ -398,13 +464,15 @@ class ConflictoDosSoles:
                 if self.state == STATE_PAUSED:
                     self.menu.draw_pause_modal(mouse_pos)
                 elif self.game.game_over and self.state == STATE_PLAYING:
-                    player_team = TEAM[self.game.human]
-                    if self.game.winner_team is not None and self.game.winner_team == player_team:
-                        self.menu.draw_victory_modal(TEAM_NAMES[self.game.winner_team], self.game.win_reason, mouse_pos)
-                    elif self.game.winner_team is not None and self.game.winner_team != player_team:
-                        self.menu.draw_game_over_modal(self.game.win_reason, mouse_pos, enemy_team=TEAM_NAMES[self.game.winner_team])
+                    winner_t = self.game.winner_team
+                    human_teams = set(TEAM[f] for f in self.game.human_factions)
+                    is_mp = len(self.game.human_factions) > 1
+                    if is_mp or (winner_t is not None and winner_t in human_teams):
+                        t_name = TEAM_NAMES[winner_t] if winner_t is not None else "Victoria"
+                        self.menu.draw_victory_modal(t_name, self.game.win_reason, mouse_pos)
                     else:
-                        self.menu.draw_game_over_modal(self.game.win_reason, mouse_pos)
+                        enemy = TEAM_NAMES[winner_t] if winner_t is not None else None
+                        self.menu.draw_game_over_modal(self.game.win_reason, mouse_pos, enemy_team=enemy)
 
 if __name__ == "__main__":
     game_app = ConflictoDosSoles()

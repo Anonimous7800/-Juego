@@ -557,24 +557,28 @@ class UIRenderer:
                 if (r, c) in game.moves:
                     target_piece = game.board[r][c]
                     if target_piece and target_piece != 'BLOCKED':
+                        sel_pos = game.selected
+                        sel_val = game.board[sel_pos[0]][sel_pos[1]] if sel_pos else ''
+                        is_ally = bool(sel_val and TEAM.get(target_piece[0]) == TEAM.get(sel_val[0]))
                         pulse = math.sin(self.anim_time * 8.0)
                         alpha = int(120 + 40 * pulse)
                         highlight = pygame.Surface((ts, ts), pygame.SRCALPHA)
-                        highlight.fill((229, 57, 53, alpha))
+                        col_fill = (56, 189, 248, alpha) if is_ally else (229, 57, 53, alpha)
+                        highlight.fill(col_fill)
                         self.screen.blit(highlight, (tx, ty))
 
                         b_len = int(ts * 0.28)
                         b_off = int(2 + pulse * 1.2)
-                        red = (255, 60, 60)
-                        pygame.draw.line(self.screen, red, (tx + b_off, ty + b_off), (tx + b_off + b_len, ty + b_off), 2)
-                        pygame.draw.line(self.screen, red, (tx + b_off, ty + b_off), (tx + b_off, ty + b_off + b_len), 2)
-                        pygame.draw.line(self.screen, red, (tx + ts - b_off, ty + b_off), (tx + ts - b_off - b_len, ty + b_off), 2)
-                        pygame.draw.line(self.screen, red, (tx + ts - b_off, ty + b_off), (tx + ts - b_off, ty + b_off + b_len), 2)
-                        pygame.draw.line(self.screen, red, (tx + b_off, ty + ts - b_off), (tx + b_off + b_len, ty + ts - b_off), 2)
-                        pygame.draw.line(self.screen, red, (tx + b_off, ty + ts - b_off), (tx + b_off, ty + ts - b_off - b_len), 2)
-                        pygame.draw.line(self.screen, red, (tx + ts - b_off, ty + ts - b_off), (tx + ts - b_off - b_len, ty + ts - b_off), 2)
-                        pygame.draw.line(self.screen, red, (tx + ts - b_off, ty + ts - b_off), (tx + ts - b_off, ty + ts - b_off - b_len), 2)
-                        pygame.draw.circle(self.screen, (255, 230, 230), (tx + ts // 2, ty + ts // 2), 2)
+                        line_col = (56, 225, 255) if is_ally else (255, 60, 60)
+                        pygame.draw.line(self.screen, line_col, (tx + b_off, ty + b_off), (tx + b_off + b_len, ty + b_off), 2)
+                        pygame.draw.line(self.screen, line_col, (tx + b_off, ty + b_off), (tx + b_off, ty + b_off + b_len), 2)
+                        pygame.draw.line(self.screen, line_col, (tx + ts - b_off, ty + b_off), (tx + ts - b_off - b_len, ty + b_off), 2)
+                        pygame.draw.line(self.screen, line_col, (tx + ts - b_off, ty + b_off), (tx + ts - b_off, ty + b_off + b_len), 2)
+                        pygame.draw.line(self.screen, line_col, (tx + b_off, ty + ts - b_off), (tx + b_off + b_len, ty + ts - b_off), 2)
+                        pygame.draw.line(self.screen, line_col, (tx + b_off, ty + ts - b_off), (tx + b_off, ty + ts - b_off - b_len), 2)
+                        pygame.draw.line(self.screen, line_col, (tx + ts - b_off, ty + ts - b_off), (tx + ts - b_off - b_len, ty + ts - b_off), 2)
+                        pygame.draw.line(self.screen, line_col, (tx + ts - b_off, ty + ts - b_off), (tx + ts - b_off, ty + ts - b_off - b_len), 2)
+                        pygame.draw.circle(self.screen, (255, 255, 255), (tx + ts // 2, ty + ts // 2), 2)
                     else:
                         pulse = math.sin(self.anim_time * 6.0)
                         highlight = pygame.Surface((ts, ts), pygame.SRCALPHA)
@@ -741,7 +745,13 @@ class UIRenderer:
 
         cur_f = FACTIONS[ORDER[game.idx]]
         is_human = game.is_human_turn()
-        turn_str = f"Turno: {cur_f['name']}  ·  PA {game.ap}/2 {'(tú)' if is_human else '(IA)'}"
+        cur_code = cur_f['code']
+        is_multi = len(getattr(game, 'human_factions', set())) > 1
+        if is_multi:
+            turn_tag = "(Humano)" if is_human else "(IA)"
+        else:
+            turn_tag = "(tú)" if is_human else "(IA)"
+        turn_str = f"Turno: {cur_f['name']}  ·  PA {game.ap}/2 {turn_tag}"
         banner_rect = pygame.Rect(right_x, y, panel_w, 34)
         pygame.draw.rect(self.screen, cur_f['bg'], banner_rect, border_radius=6)
         pygame.draw.rect(self.screen, cur_f['color'], banner_rect, 1, border_radius=6)
@@ -756,7 +766,8 @@ class UIRenderer:
         pygame.draw.rect(self.screen, (26, 18, 14), lives_rect, border_radius=8)
         pygame.draw.rect(self.screen, (160, 50, 75), lives_rect, 1, border_radius=8)
 
-        cur_lives = game.lives.get(game.human, 3)
+        active_show_code = cur_code if is_human else (game.human if hasattr(game, 'human') else 'S')
+        cur_lives = game.lives.get(active_show_code, 3)
         if cur_lives >= 3:
             tag_str = "ÓPTIMO"
             tag_col = (78, 205, 145)
@@ -770,7 +781,7 @@ class UIRenderer:
             tag_col = (255, 50, 80)
             tag_bg = (70, 20, 25)
 
-        cmd_name = FACTIONS[next(k for k in ORDER if FACTIONS[k]['code'] == game.human)]['name']
+        cmd_name = FACTIONS[next(k for k in ORDER if FACTIONS[k]['code'] == active_show_code)]['name']
         lbl_cmd = self.font_bold.render(f"Comandante {cmd_name}:", True, (255, 215, 225))
         self.screen.blit(lbl_cmd, (right_x + 12, y + 6))
 
@@ -819,7 +830,10 @@ class UIRenderer:
             pygame.draw.rect(self.screen, f_data['color'] if not is_elim else (100, 50, 50), p_rect, 2 if is_turn else 1, border_radius=4)
             pygame.draw.rect(self.screen, f_data['color'], (px, py, 3, 24), border_radius=2)
 
-            role = "(Tú)" if code == game.human else ("(Aliado)" if TEAM[code] == TEAM[game.human] else "(Enemigo)")
+            if is_multi:
+                role = "(Humano)" if code in getattr(game, 'human_factions', {game.human}) else "(IA)"
+            else:
+                role = "(Tú)" if code == game.human else ("(Aliado)" if TEAM[code] == TEAM[game.human] else "(Enemigo)")
             txt = self.font_badge.render(f"{f_data['name'][:5]} {role}", True, f_data['color'])
             self.screen.blit(txt, (px + 6, py + 5))
 

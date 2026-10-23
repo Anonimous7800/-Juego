@@ -189,12 +189,18 @@ La clase `PieceGraphics` dibuja piezas militares con estética heráldica:
 
 #### 4.6 `src/menu.py` — Gestión de Menús e Interfaces
 La clase `MenuManager` orquesta todas las pantallas previas y posteriores al combate:
-- **Menú Principal (`draw_main_menu`)**: Fondo dinámico con partículas, títulos con resplandor dorado, botones de navegación con iconos y barra inferior con los sellos de las 4 naciones.
-- **Selector de Comandantes (`draw_character_select`)**: Muestra tarjetas informativas detalladas con retrato, estadísticas, descripción de habilidades pasivas y lore de cada líder.
+- **Menú Principal (`draw_main_menu`)**: Fondo dinámico con partículas, títulos con resplandor dorado, botones de navegación con iconos (Partida Bélica, Tutorial, Multijugador Local, Misiones, Ajustes, Reglas, Créditos, Salir) y barra inferior con los sellos de las 4 naciones.
+- **Modo Multijugador Local (`draw_multiplayer_menu`)**: Nueva pantalla completa de configuración donde se asigna a cada una de las 4 naciones el rol de **Jugador Humano** o **Inteligencia Artificial**. Incluye 4 preajustes rápidos:
+  - *1 vs 1: Duelo Solar* (Solcardena vs Aurelium con aliados por IA).
+  - *2 vs 2: Cooperativo vs IA* (Solcardena y Varkhental humanos contra Coalición IA).
+  - *1 vs 1: Guerra Total* (Alianza controlada por Jugador 1 vs Coalición por Jugador 2).
+  - *4 Jugadores Humanos* (Control por turnos en el mismo equipo).
+  - Alternancia personalizada con un solo clic en la tarjeta de cada facción.
+- **Selector de Comandantes (`draw_character_select`)**: Muestra tarjetas informativas detalladas con retrato, estadísticas, descripción de habilidades pasivas y lore de cada líder para partidas individuales.
 - **Misiones y Hazañas (`draw_missions`)**: Panel deslizable con rueda de ratón o botones directos que exhibe el progreso en tiempo real de los logros militares.
 - **Ajustes de Audio (`draw_settings`)**: Controles deslizantes (sliders) interactivos para regular de 0% a 100% la música y los efectos de sonido, selector de dificultad de la IA y botón de prueba.
 - **Enciclopedia y Reglas (`draw_rules`)**: Guía detallada con la tabla de rangos, atributos, costos de despliegue y mecánicas de victoria.
-- **Pantalla de Créditos (`draw_credits`)**: Presentación formal a dos columnas con el origen de la saga comunitaria, creadores, desarrollo y agradecimientos.
+- **Pantalla de Créditos (`draw_credits`)**: Presentación cinematográfica con efecto de scroll continuo descendente ("bajando"), degradados de fade en los bordes, animación de entrada slide-down, control de dirección (bajar/subir), velocidad variable (1x, 1.75x, 2.5x), botón de pausa/reanudación, reinicio, soporte para rueda de ratón / arrastre de barra y teclado (Espacio, Flechas, Esc). Incluye cronología de las 4 eras comunitarias (2018-2026+), creadores, comandantes, tecnología y agradecimientos.
 - **Modales de Fin de Partida**:
   - `draw_victory_modal`: Fanfarria dorada de victoria gloriosa con opción de revancha o salida al menú.
   - `draw_game_over_modal`: Modal dramático en tonos carmesí que anuncia el bando enemigo vencedor y la causa de la derrota.
