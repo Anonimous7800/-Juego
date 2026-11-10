@@ -3,6 +3,7 @@
 Adaptación profesional completa en Python con **Pygame** de *El Conflicto de los Dos Soles*, con música ambiental, efectos de sonido de alta fidelidad, menú interactivo con partículas, selector de personajes y comandantes, sistema de misiones y hazañas, pantalla de ajustes con control de volumen, tutorial de reglas y pantallas dramáticas de Victoria y Game Over.
 
 ---
+## Project University 
 
 ## 🎮 Características Principales
 
